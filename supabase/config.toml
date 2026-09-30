@@ -1,0 +1,56 @@
+# Supabase Local Development Configuration
+# Run: supabase start (this file will be read automatically)
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+extensions = []
+# seed seeds with a SQL file, e.g. "supabase/seed.sql"
+seed_file = ""
+# seeddir seeds with a SQL files in a directory, e.g. "supabase/seeds"
+seed_dir = ""
+
+[realtime]
+enabled = true
+max_bytes_per_second = 0
+max_channels_per_client = 128
+max_joins_per_second = 0
+max_presence_per_channel = 300
+max_presence_per_client = 300
+max_reconnect_delay = 30
+secure_key = "your-development-secure-key"
+
+[storage]
+enabled = true
+file_size_limit = 52428800  # 50 MB
+s3_host = "http://storage:5000"
+s3_protocol = "http"
+s3_bucket = "stub"
+file_size_limit_bytes = 52428800
+cors = []
+
+[auth]
+enabled = true
+rate_limit_start_period = 60000  # milliseconds
+rate_limit_max_requests = 15
+sms_autoconfirm = true
+email_autoconfirm = true
+
+[edge_runtime]
+enabled = true
+policy_mode = "wasm"  # native | wasm
+log_net_access = true
+allow_net_access = true
+
+[[env.jwt]]
+secret = "super-secret-jwt-token-with-at-least-32-characters-long"
+exp = 3600
+alg = "HS256"
+key = "sub"
