@@ -18,6 +18,21 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY") ?? ""
     );
 
+    const { method } = req;
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split("/");
+    const packageId = pathParts[pathParts.length - 1];
+
+    // GET requests are public (no auth required)
+    if (method === "GET") {
+      if (packageId && packageId !== "packages" && !pathParts.includes("purchase")) {
+        return await getPackage(packageId, supabase, corsHeaders);
+      } else {
+        return await listPackages(url, supabase, corsHeaders);
+      }
+    }
+
+    // POST, PATCH, DELETE require auth
     const authHeader = req.headers.get("Authorization") ?? "";
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
@@ -26,16 +41,7 @@ serve(async (req) => {
       return errorResponse("Unauthorized", 401, corsHeaders);
     }
 
-    const { method } = req;
-    const url = new URL(req.url);
-    const pathParts = url.pathname.split("/");
-    const packageId = pathParts[pathParts.length - 1];
-
-    if (method === "GET" && packageId && packageId !== "packages" && !pathParts.includes("purchase")) {
-      return await getPackage(packageId, supabase, corsHeaders);
-    } else if (method === "GET") {
-      return await listPackages(url, supabase, corsHeaders);
-    } else if (method === "POST" && pathParts.includes("purchase")) {
+    if (method === "POST" && pathParts.includes("purchase")) {
       return await purchasePackage(req, supabase, user, corsHeaders);
     } else if (method === "POST") {
       return await createPackage(req, supabase, user, corsHeaders);

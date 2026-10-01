@@ -18,6 +18,21 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY") ?? ""
     );
 
+    const { method } = req;
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split("/");
+    const branchId = pathParts[pathParts.length - 1];
+
+    // GET requests are public (no auth required)
+    if (method === "GET") {
+      if (branchId && branchId !== "branches") {
+        return await getBranch(branchId, supabase, corsHeaders);
+      } else {
+        return await listBranches(url, supabase, corsHeaders);
+      }
+    }
+
+    // POST, PATCH, DELETE require auth
     const authHeader = req.headers.get("Authorization") ?? "";
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
@@ -26,16 +41,7 @@ serve(async (req) => {
       return errorResponse("Unauthorized", 401, corsHeaders);
     }
 
-    const { method } = req;
-    const url = new URL(req.url);
-    const pathParts = url.pathname.split("/");
-    const branchId = pathParts[pathParts.length - 1];
-
-    if (method === "GET" && branchId && branchId !== "branches") {
-      return await getBranch(branchId, supabase, user, corsHeaders);
-    } else if (method === "GET") {
-      return await listBranches(url, supabase, user, corsHeaders);
-    } else if (method === "POST") {
+    if (method === "POST") {
       return await createBranch(req, supabase, user, corsHeaders);
     } else if (method === "PATCH") {
       return await updateBranch(branchId, req, supabase, user, corsHeaders);
@@ -50,30 +56,16 @@ serve(async (req) => {
   }
 });
 
-async function listBranches(url: URL, supabase: any, user: any, headers: any) {
+async function listBranches(url: URL, supabase: any, headers: any) {
   const organizationId = url.searchParams.get("organizationId");
 
-  if (!organizationId) {
-    return errorResponse("Missing organizationId", 400, headers);
+  let query = supabase.from("branches").select("*").eq("status", "active");
+
+  if (organizationId) {
+    query = query.eq("organization_id", organizationId);
   }
 
-  // Verify user has access to this org
-  const { data: staff } = await supabase
-    .from("staff_profiles")
-    .select("role, organization_id")
-    .eq("id", user.id)
-    .single();
-
-  if (!staff || (staff.role !== "SuperAdmin" && staff.organization_id !== organizationId)) {
-    return errorResponse("Unauthorized", 403, headers);
-  }
-
-  const { data, error } = await supabase
-    .from("branches")
-    .select("*")
-    .eq("organization_id", organizationId)
-    .eq("status", "active")
-    .order("name");
+  const { data, error } = await query.order("name");
 
   if (error) {
     return errorResponse(error.message, 400, headers);
@@ -82,7 +74,7 @@ async function listBranches(url: URL, supabase: any, user: any, headers: any) {
   return successResponse(data, 200, headers);
 }
 
-async function getBranch(branchId: string, supabase: any, user: any, headers: any) {
+async function getBranch(branchId: string, supabase: any, headers: any) {
   const { data, error } = await supabase
     .from("branches")
     .select("*")
@@ -92,19 +84,6 @@ async function getBranch(branchId: string, supabase: any, user: any, headers: an
 
   if (error) {
     return errorResponse("Branch not found", 404, headers);
-  }
-
-  // Verify access
-  const { data: staff } = await supabase
-    .from("staff_profiles")
-    .select("role, organization_id, branch_id")
-    .eq("id", user.id)
-    .single();
-
-  if (!staff || (staff.role === "BranchManager" && staff.branch_id !== branchId)) {
-    if (staff.role !== "SuperAdmin" && staff.organization_id !== data.organization_id) {
-      return errorResponse("Unauthorized", 403, headers);
-    }
   }
 
   return successResponse(data, 200, headers);

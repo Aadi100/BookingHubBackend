@@ -18,6 +18,21 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY") ?? ""
     );
 
+    const { method } = req;
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split("/");
+    const roomId = pathParts[pathParts.length - 1];
+
+    // GET requests are public (no auth required)
+    if (method === "GET") {
+      if (roomId && roomId !== "rooms") {
+        return await getRoom(roomId, supabase, corsHeaders);
+      } else {
+        return await listRooms(url, supabase, corsHeaders);
+      }
+    }
+
+    // POST, PATCH, DELETE require auth
     const authHeader = req.headers.get("Authorization") ?? "";
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
@@ -26,16 +41,7 @@ serve(async (req) => {
       return errorResponse("Unauthorized", 401, corsHeaders);
     }
 
-    const { method } = req;
-    const url = new URL(req.url);
-    const pathParts = url.pathname.split("/");
-    const roomId = pathParts[pathParts.length - 1];
-
-    if (method === "GET" && roomId && roomId !== "rooms") {
-      return await getRoom(roomId, supabase, corsHeaders);
-    } else if (method === "GET") {
-      return await listRooms(url, supabase, corsHeaders);
-    } else if (method === "POST") {
+    if (method === "POST") {
       return await createRoom(req, supabase, user, corsHeaders);
     } else if (method === "PATCH") {
       return await updateRoom(roomId, req, supabase, user, corsHeaders);

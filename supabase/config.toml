@@ -49,7 +49,7 @@ policy_mode = "wasm"  # native | wasm
 log_net_access = true
 allow_net_access = true
 
-[[env.jwt]]
+[jwt]
 secret = "super-secret-jwt-token-with-at-least-32-characters-long"
 exp = 3600
 alg = "HS256"
