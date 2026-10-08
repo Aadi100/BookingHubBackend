@@ -29,6 +29,10 @@ serve(async (req) => {
       return await loginMember(req, supabase, corsHeaders);
     } else if (method === "POST" && urlPath.includes("staff/login")) {
       return await loginStaff(req, supabase, corsHeaders);
+    } else if (method === "POST" && urlPath.includes("password/forgot")) {
+      return await forgotPassword(req, supabase, corsHeaders);
+    } else if (method === "POST" && urlPath.includes("password/reset")) {
+      return await resetPassword(req, supabase, corsHeaders);
     }
 
     // Protected endpoints (require auth)
@@ -300,6 +304,58 @@ async function getMe(req: Request, supabase: any, headers: any, user?: any) {
     profile: null,
     type: "unknown"
   }, 200, headers);
+}
+
+async function forgotPassword(req: Request, supabase: any, headers: any) {
+  const body = await req.json();
+  const { email } = body;
+
+  if (!email) {
+    return errorResponse("Missing email", 400, headers);
+  }
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${req.headers.get("origin")}/auth/reset-password`,
+    });
+
+    if (error) {
+      return errorResponse(error.message, 400, headers);
+    }
+
+    return successResponse({
+      message: "Password reset link sent to email",
+      email,
+    }, 200, headers);
+  } catch (error) {
+    return errorResponse(error.message, 500, headers);
+  }
+}
+
+async function resetPassword(req: Request, supabase: any, headers: any) {
+  const body = await req.json();
+  const { token, password } = body;
+
+  if (!token || !password) {
+    return errorResponse("Missing token or password", 400, headers);
+  }
+
+  try {
+    // Use the recovery token to update password
+    const { error } = await supabase.auth.updateUser({
+      password: password,
+    });
+
+    if (error) {
+      return errorResponse(error.message, 400, headers);
+    }
+
+    return successResponse({
+      message: "Password updated successfully",
+    }, 200, headers);
+  } catch (error) {
+    return errorResponse(error.message, 500, headers);
+  }
 }
 
 function successResponse(data: any, statusCode = 200, headers: any = {}) {
