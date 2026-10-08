@@ -54,18 +54,24 @@ async function listStaff(url: URL, supabase: any, user: any, headers: any) {
   const organizationId = url.searchParams.get("organizationId");
   const branchId = url.searchParams.get("branchId");
 
+  // Use service role for staff verification (bypass RLS)
+  const supabaseAdmin = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
+
   // Verify user has access
-  const { data: userStaff } = await supabase
+  const { data: userStaff, error: userStaffError } = await supabaseAdmin
     .from("staff_profiles")
     .select("role, organization_id, branch_id")
     .eq("id", user.id)
     .single();
 
-  if (!userStaff) {
+  if (!userStaff || userStaffError) {
     return errorResponse("User is not staff", 403, headers);
   }
 
-  let query = supabase
+  let query = supabaseAdmin
     .from("staff_profiles")
     .select("*")
     .eq("is_active", true);

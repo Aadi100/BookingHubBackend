@@ -273,14 +273,20 @@ async function getMe(req: Request, supabase: any, headers: any, user?: any) {
     user = authUser;
   }
 
+  // Create service role client for internal lookups (bypass RLS)
+  const supabaseAdmin = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
+
   // Try to get member profile
-  const { data: member } = await supabase
+  const { data: member, error: memberError } = await supabaseAdmin
     .from("members")
     .select("*")
     .eq("id", user.id)
     .single();
 
-  if (member) {
+  if (member && !memberError) {
     return successResponse({
       user,
       profile: member,
@@ -289,13 +295,13 @@ async function getMe(req: Request, supabase: any, headers: any, user?: any) {
   }
 
   // Try to get staff profile
-  const { data: staff } = await supabase
+  const { data: staff, error: staffError } = await supabaseAdmin
     .from("staff_profiles")
     .select("*")
     .eq("id", user.id)
     .single();
 
-  if (staff) {
+  if (staff && !staffError) {
     return successResponse({
       user,
       profile: staff,
