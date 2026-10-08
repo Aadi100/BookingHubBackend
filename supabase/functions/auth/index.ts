@@ -22,16 +22,28 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY") ?? ""
     );
 
+    // Public endpoints (no auth required)
     if (method === "POST" && urlPath.includes("members/register")) {
       return await registerMember(req, supabase, corsHeaders);
     } else if (method === "POST" && urlPath.includes("members/login")) {
       return await loginMember(req, supabase, corsHeaders);
-    } else if (method === "POST" && urlPath.includes("staff/create")) {
-      return await createStaff(req, supabase, corsHeaders);
     } else if (method === "POST" && urlPath.includes("staff/login")) {
       return await loginStaff(req, supabase, corsHeaders);
+    }
+
+    // Protected endpoints (require auth)
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return errorResponse("Unauthorized", 401, corsHeaders);
+    }
+
+    if (method === "POST" && urlPath.includes("staff/create")) {
+      return await createStaff(req, supabase, corsHeaders);
     } else if (method === "GET" && urlPath.includes("me")) {
-      return await getMe(req, supabase, corsHeaders);
+      return await getMe(req, supabase, corsHeaders, user);
     }
 
     return errorResponse("Not found", 404, corsHeaders);
@@ -239,14 +251,18 @@ async function loginStaff(req: Request, supabase: any, headers: any) {
   }
 }
 
-async function getMe(req: Request, supabase: any, headers: any) {
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const token = authHeader.replace("Bearer ", "");
+async function getMe(req: Request, supabase: any, headers: any, user?: any) {
+  // If user not passed from main handler, authenticate here
+  if (!user) {
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const token = authHeader.replace("Bearer ", "");
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
 
-  if (authError || !user) {
-    return errorResponse("Unauthorized", 401, headers);
+    if (authError || !authUser) {
+      return errorResponse("Unauthorized", 401, headers);
+    }
+    user = authUser;
   }
 
   // Try to get member profile
