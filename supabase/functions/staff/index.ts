@@ -76,25 +76,26 @@ async function listStaff(url: URL, supabase: any, user: any, headers: any) {
     .select("*")
     .eq("is_active", true);
 
-  // SuperAdmin can see all
-  if (userStaff.role !== "SuperAdmin") {
-    // OrgAdmin can see their org
-    if (userStaff.role === "OrgAdmin") {
-      if (!organizationId || organizationId !== userStaff.organization_id) {
-        return errorResponse("Unauthorized", 403, headers);
-      }
-      query = query.eq("organization_id", organizationId);
-    } else {
-      // Other roles can only see their branch
-      if (!branchId || branchId !== userStaff.branch_id) {
-        return errorResponse("Unauthorized", 403, headers);
-      }
-      query = query.eq("branch_id", branchId);
+  // SuperAdmin can see all, optionally filtered by org/branch if provided
+  if (userStaff.role === "SuperAdmin") {
+    if (organizationId) query = query.eq("organization_id", organizationId);
+    if (branchId) query = query.eq("branch_id", branchId);
+  } else if (userStaff.role === "OrgAdmin") {
+    // OrgAdmin defaults to their own org; if a different org is explicitly
+    // requested, reject. No param supplied = use their own org.
+    const targetOrg = organizationId || userStaff.organization_id;
+    if (targetOrg !== userStaff.organization_id) {
+      return errorResponse("Unauthorized", 403, headers);
     }
-  } else if (organizationId) {
-    query = query.eq("organization_id", organizationId);
-  } else if (branchId) {
-    query = query.eq("branch_id", branchId);
+    query = query.eq("organization_id", targetOrg);
+  } else {
+    // BranchManager/Staff/Support default to their own branch; if a
+    // different branch is explicitly requested, reject.
+    const targetBranch = branchId || userStaff.branch_id;
+    if (targetBranch !== userStaff.branch_id) {
+      return errorResponse("Unauthorized", 403, headers);
+    }
+    query = query.eq("branch_id", targetBranch);
   }
 
   const { data, error } = await query.order("name");

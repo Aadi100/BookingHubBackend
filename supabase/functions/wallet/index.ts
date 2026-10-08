@@ -26,18 +26,27 @@ serve(async (req) => {
       return errorResponse("Unauthorized", 401, corsHeaders);
     }
 
+    // Use service role for data access — these queries are always scoped to
+    // the authenticated user's own id (memberId = user.id), so bypassing RLS
+    // here is safe and avoids the "own row invisible to self" RLS bug seen
+    // on /auth/me and /staff.
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
     const { method } = req;
     const url = new URL(req.url);
     const pathParts = url.pathname.split("/");
 
     if (method === "GET" && pathParts.includes("credits")) {
-      return await getWalletCredits(user.id, supabase, corsHeaders);
+      return await getWalletCredits(user.id, supabaseAdmin, corsHeaders);
     } else if (method === "GET" && pathParts.includes("debits")) {
-      return await getWalletDebits(user.id, supabase, corsHeaders);
+      return await getWalletDebits(user.id, supabaseAdmin, corsHeaders);
     } else if (method === "GET") {
-      return await getWallet(user.id, supabase, corsHeaders);
+      return await getWallet(user.id, supabaseAdmin, corsHeaders);
     } else if (method === "POST" && pathParts.includes("recharge")) {
-      return await rechargeWallet(user.id, req, supabase, corsHeaders);
+      return await rechargeWallet(user.id, req, supabaseAdmin, corsHeaders);
     }
 
     return errorResponse("Method not allowed", 405, corsHeaders);

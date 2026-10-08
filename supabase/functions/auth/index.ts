@@ -49,9 +49,9 @@ serve(async (req) => {
     } else if (method === "GET" && urlPath.includes("me")) {
       return await getMe(req, supabase, corsHeaders, user);
     } else if (method === "GET" && urlPath.includes("sessions")) {
-      return await listSessions(supabase, user, corsHeaders);
+      return await listSessions(token, user, corsHeaders);
     } else if (method === "DELETE" && urlPath.includes("sessions")) {
-      return await deleteSession(req, supabase, user, corsHeaders);
+      return await deleteSession(req, supabase, token, user, corsHeaders);
     }
 
     return errorResponse("Not found", 404, corsHeaders);
@@ -316,29 +316,53 @@ async function getMe(req: Request, supabase: any, headers: any, user?: any) {
   }, 200, headers);
 }
 
-async function listSessions(supabase: any, user: any, headers: any) {
-  // Get current session from JWT
-  const { data: { session }, error } = await supabase.auth.getSession();
+function decodeJwtPayload(token: string): any {
+  try {
+    const payloadB64 = token.split(".")[1];
+    const padded = payloadB64.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(padded.padEnd(padded.length + (4 - (padded.length % 4 || 4)) % 4, "="));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
 
-  if (error || !session) {
+async function listSessions(token: string, user: any, headers: any) {
+  // There is no server-side session store to query here — the bearer token
+  // IS the active session. We already validated it (that's how we got
+  // `user`), so decode its own claims rather than calling getSession(),
+  // which only works against a client-persisted session and is always
+  // empty in an edge function.
+  const payload = decodeJwtPayload(token);
+
+  if (!payload) {
     return errorResponse("No active session", 401, headers);
   }
 
   return successResponse({
     sessions: [
       {
-        id: session.access_token?.substring(0, 20) + "...",
-        user_id: session.user.id,
-        expires_at: session.expires_at,
-        created_at: session.created_at,
+        id: payload.session_id || token.substring(0, 20) + "...",
+        user_id: user.id,
+        email: payload.email,
+        issued_at: payload.iat,
+        expires_at: payload.exp,
       },
     ],
     total: 1,
   }, 200, headers);
 }
 
-async function deleteSession(req: Request, supabase: any, user: any, headers: any) {
-  const { error } = await supabase.auth.signOut();
+async function deleteSession(req: Request, supabase: any, token: string, user: any, headers: any) {
+  // Sign out this specific session using its own token, not the shared
+  // anon client (which has no session state to sign out of).
+  const userClient = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    { global: { headers: { Authorization: `Bearer ${token}` } } }
+  );
+
+  const { error } = await userClient.auth.signOut();
 
   if (error) {
     return errorResponse(error.message, 400, headers);
