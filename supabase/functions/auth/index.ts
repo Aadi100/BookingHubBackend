@@ -24,8 +24,14 @@ serve(async (req) => {
 
     if (method === "POST" && urlPath.includes("members/register")) {
       return await registerMember(req, supabase, corsHeaders);
+    } else if (method === "POST" && urlPath.includes("members/login")) {
+      return await loginMember(req, supabase, corsHeaders);
     } else if (method === "POST" && urlPath.includes("staff/create")) {
       return await createStaff(req, supabase, corsHeaders);
+    } else if (method === "POST" && urlPath.includes("staff/login")) {
+      return await loginStaff(req, supabase, corsHeaders);
+    } else if (method === "GET" && urlPath.includes("me")) {
+      return await getMe(req, supabase, corsHeaders);
     }
 
     return errorResponse("Not found", 404, corsHeaders);
@@ -163,6 +169,121 @@ async function createStaff(req: Request, supabase: any, headers: any) {
   } catch (error) {
     return errorResponse(error.message, 500, headers);
   }
+}
+
+async function loginMember(req: Request, supabase: any, headers: any) {
+  const body = await req.json();
+  const { email, password } = body;
+
+  if (!email || !password) {
+    return errorResponse("Missing email or password", 400, headers);
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      return errorResponse(error.message, 401, headers);
+    }
+
+    return successResponse({
+      user: data.user,
+      session: data.session,
+      message: "Login successful"
+    }, 200, headers);
+  } catch (error) {
+    return errorResponse(error.message, 500, headers);
+  }
+}
+
+async function loginStaff(req: Request, supabase: any, headers: any) {
+  const body = await req.json();
+  const { email, password } = body;
+
+  if (!email || !password) {
+    return errorResponse("Missing email or password", 400, headers);
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      return errorResponse(error.message, 401, headers);
+    }
+
+    // Verify user is staff
+    const { data: staffProfile } = await supabase
+      .from("staff_profiles")
+      .select("*")
+      .eq("id", data.user.id)
+      .single();
+
+    if (!staffProfile) {
+      return errorResponse("User is not a staff member", 403, headers);
+    }
+
+    return successResponse({
+      user: data.user,
+      session: data.session,
+      staff: staffProfile,
+      message: "Staff login successful"
+    }, 200, headers);
+  } catch (error) {
+    return errorResponse(error.message, 500, headers);
+  }
+}
+
+async function getMe(req: Request, supabase: any, headers: any) {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace("Bearer ", "");
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+  if (authError || !user) {
+    return errorResponse("Unauthorized", 401, headers);
+  }
+
+  // Try to get member profile
+  const { data: member } = await supabase
+    .from("members")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+
+  if (member) {
+    return successResponse({
+      user,
+      profile: member,
+      type: "member"
+    }, 200, headers);
+  }
+
+  // Try to get staff profile
+  const { data: staff } = await supabase
+    .from("staff_profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+
+  if (staff) {
+    return successResponse({
+      user,
+      profile: staff,
+      type: "staff"
+    }, 200, headers);
+  }
+
+  return successResponse({
+    user,
+    profile: null,
+    type: "unknown"
+  }, 200, headers);
 }
 
 function successResponse(data: any, statusCode = 200, headers: any = {}) {
