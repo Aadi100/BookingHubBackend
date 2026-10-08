@@ -141,18 +141,25 @@ async function branchPerformanceReport(url: URL, supabase: any, user: any, heade
   const endDate = url.searchParams.get("end_date");
   const branchId = url.searchParams.get("branch_id");
 
+  // Get all bookings (bookings don't have branch_id directly, need to join through courts/rooms)
   let query = supabase
     .from("bookings")
-    .select("id, branch_id, status, total, created_at");
+    .select(`
+      id,
+      status,
+      total,
+      created_at,
+      court_id,
+      room_id,
+      courts(branch_id),
+      rooms(branch_id)
+    `);
 
   if (startDate) {
     query = query.gte("created_at", `${startDate}T00:00:00Z`);
   }
   if (endDate) {
     query = query.lte("created_at", `${endDate}T23:59:59Z`);
-  }
-  if (branchId) {
-    query = query.eq("branch_id", branchId);
   }
 
   const { data: bookings, error } = await query;
@@ -163,18 +170,29 @@ async function branchPerformanceReport(url: URL, supabase: any, user: any, heade
 
   const branchStats: any = {};
   bookings.forEach((b: any) => {
-    if (!branchStats[b.branch_id]) {
-      branchStats[b.branch_id] = {
+    // Determine branch_id from court or room
+    let bid = null;
+    if (b.courts && b.courts.branch_id) {
+      bid = b.courts.branch_id;
+    } else if (b.rooms && b.rooms.branch_id) {
+      bid = b.rooms.branch_id;
+    }
+
+    // Skip if we can't determine branch or if filtering by specific branch
+    if (!bid || (branchId && bid !== branchId)) return;
+
+    if (!branchStats[bid]) {
+      branchStats[bid] = {
         total_bookings: 0,
         completed: 0,
         cancelled: 0,
         revenue: 0,
       };
     }
-    branchStats[b.branch_id].total_bookings++;
-    if (b.status === "Confirmed") branchStats[b.branch_id].completed++;
-    if (b.status === "Cancelled") branchStats[b.branch_id].cancelled++;
-    branchStats[b.branch_id].revenue += b.total || 0;
+    branchStats[bid].total_bookings++;
+    if (b.status === "Confirmed") branchStats[bid].completed++;
+    if (b.status === "Cancelled") branchStats[bid].cancelled++;
+    branchStats[bid].revenue += b.total || 0;
   });
 
   return successResponse({
