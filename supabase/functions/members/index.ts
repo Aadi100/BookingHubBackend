@@ -25,15 +25,26 @@ serve(async (req) => {
       return errorResponse("Unauthorized", 401, corsHeaders);
     }
 
+    // Use service role for data access — the id is checked against user.id
+    // below before any query runs, so this is always scoped to the caller's
+    // own row, not a caller-supplied id. Same pattern as /auth/me and
+    // /wallet: the anon client can't see its own row here because RLS's
+    // auth.uid() doesn't attach to a server-side anon client, not because
+    // the row doesn't exist.
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
     const { method, url: reqUrl } = req;
     const url = new URL(reqUrl);
     const pathParts = url.pathname.split("/");
     const memberId = pathParts[pathParts.length - 1];
 
     if (method === "GET" && memberId && memberId !== "members") {
-      return await getMember(memberId, user, supabase, corsHeaders);
+      return await getMember(memberId, user, supabaseAdmin, corsHeaders);
     } else if (method === "PATCH" && memberId && memberId !== "members") {
-      return await updateMember(memberId, user, req, supabase, corsHeaders);
+      return await updateMember(memberId, user, req, supabaseAdmin, corsHeaders);
     }
 
     return errorResponse("Method not allowed", 405, corsHeaders);
